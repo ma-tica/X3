@@ -1,0 +1,19 @@
+
+Subprog YALLOCOP(PMFGNUM, PALLOC, WRET)
+Value Char PMFGNUM
+Value Integer PALLOC
+Variable Integer WRET
+   Gosub OUVFIC From WOMFG
+   Gosub OUVRE From WOMFG
+
+
+   Local Integer WRET
+   Local Integer YTALL : YTALL = 2  #1 allocazione globale, 2 allocazione dettagliata
+   Local Integer YTDESALL : YTDESALL = 1 # 1 completo, 2 per tipo allocazione
+   If PALLOC = 1 Then
+    Call ALLOC_OF2("C", 1, PMFGNUM, YTALL, YTDESALL, "R", WRET) From MFGALL
+   Else
+    Call ALLOC_OF2("A", 1, PMFGNUM, YTALL, YTDESALL, "R", WRET) From MFGALL
+   Endif
+End
+
