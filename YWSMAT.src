@@ -1,0 +1,159 @@
+#
+# Trattamento richiamato da webservice per consumo dei materiali
+#
+
+Local Integer YNOL : YNOL = 2
+Local Char PMFGFCY(GLONFCY)
+Local Char PMFGNUM(GLONMFG)
+Local Char PA_CMPITM(GLONITM)(YNOL)
+Local Decimal PA_CMPQTY(YNOL)
+Local Char PA_CMPSTA(GLONSTA)(YNOL)
+Local Char PA_CMPLOC(GLONLOC)(YNOL)
+Local Char PA_CMPLOT(GLONLOT)(YNOL)
+Local Integer PA_CLEFLG(YNOL)
+Local Char WMSGERR(250)
+Local Char WMFGTRKNUM(50)
+
+PMFGFCY = "1010"
+PMFGNUM = "10101901020"
+PA_CMPITM(0) = "ZNDB"
+PA_CMPQTY(0) = 0.5
+PA_CMPSTA(0) = "A"
+PA_CMPLOC(0) = "FBM000000"
+PA_CMPLOT(0) = "101806210"
+
+PA_CMPITM(1) = "Y146WM"
+PA_CMPQTY(1) = 0.03
+PA_CMPSTA(1) = "R"
+PA_CMPLOC(1) = "FBM000000"
+PA_CMPLOT(1) = "101900813"
+
+
+Call SCARICA_COMPONENTI(PMFGFCY, PMFGNUM, PA_CMPITM, PA_CMPQTY, PA_CMPSTA, PA_CMPLOC, PA_CMPLOT, PA_CLEFLG, [L]WMSGERR, [L]WMFGTRKNUM)
+
+Infbox "FINE=>" - WMSGERR - WMFGTRKNUM
+
+End
+
+
+
+Subprog SCARICA_COMPONENTI(PMFGFCY, PMFGNUM, PA_CMPITM, PA_CMPQTY, PA_CMPSTA, PA_CMPLOC, PA_CMPLOT, PA_CLEFLG, WY_MSGERR, WY_MFGTRKNUM )
+Value Char PMFGFCY
+Value Char PMFGNUM
+Value Char PA_CMPITM
+Value Decimal PA_CMPQTY
+Value Char PA_CMPSTA
+Value Char PA_CMPLOC
+Value Char PA_CMPLOT
+Value Integer PA_CLEFLG
+Variable Char WY_MSGERR
+Variable Char WY_MFGTRKNUM
+
+
+  If clalev([M:XAMT])=0 : Local Mask     VXAMT[M:XAMT] : Endif
+  If clalev([M:MBM])=0  : Local Mask  MTKBENCHM[M:MBM] : Endif
+
+  Local Shortint YMYTRACE : YMYTRACE = 0
+  If GTRACE = "" Then
+    Call OUVRE_TRACE("Avanzamneto componenti") From LECFIC
+    YMYTRACE = 1
+  Endif
+
+  Local Char LORI(20)
+  Local Date YDATA : YDATA = date$
+
+  Gosub OUVRE From VXAMT
+
+  Default Mask [M:MBM]
+
+  Gosub DEBUT From VXAMT
+
+  Gosub INIT_SCREEN  From VXAMT
+
+  [M:XAMT]FCY    = GXAFCY
+  [M:XAMT]IPTDAT = YDATA
+
+  Call C_MFGNUM(PMFGNUM) From W1VXAMT
+
+  Call AM_MFGNUM(PMFGNUM) From W1VXAMT
+  [M:XAMT]MFGNUM=PMFGNUM
+
+
+
+
+  For YNOL = 0 To dim(PA_CMPITM) - 1
+    Call C_ITMREF(PA_CMPITM(YNOL)) From W1VXAMT
+
+    Filter [F:MFM] Where MFGNUM=PMFGNUM & ITMREF=PA_CMPITM(YNOL) #& ([F:MFM]BOMOPE=0 | [F:MFM]BOMOPE=YBOMOPE) & BOMSEQ=YBOMSEQ
+    For [F:MFM]
+        [M:XAMT]MFGLIN = [F:MFM]MFGLIN
+        [M:XAMT]BOMOPE = [F:MFM]BOMOPE
+        [M:XAMT]BOMSEQ = [F:MFM]BOMSEQ
+        Break
+    Next
+    Filter [F:MFM]
+
+    Call AM_ITMREF(PA_CMPITM(YNOL)) From W1VXAMT
+    [M:XAMT]ITMREF=PA_CMPITM(YNOL)
+
+    Call AM_USEQTY(PA_CMPQTY(YNOL)) From W1VXAMT
+    [M:XAMT]USEQTY=PA_CMPQTY(YNOL)
+
+    Call C_STA(PA_CMPSTA(YNOL)) From W1VXAMT
+    [M:XAMT]STA=PA_CMPSTA(YNOL)
+
+    Call C_LOC(PA_CMPLOC(YNOL)) From W1VXAMT
+    [M:XAMT]LOC=PA_CMPLOC(YNOL)
+
+    Call C_LOT(PA_CMPLOT(YNOL)) From W1VXAMT
+    [M:XAMT]LOT=PA_CMPLOT(YNOL)
+
+    If PA_CLEFLG(YNOL) = 2 Then
+      [M:XAMT]CLEFLG=2  #--- saldo
+    Endif
+
+    Gosub AVANT_OK From VXAMT
+    If GERR = 1 Then
+      Call ECR_TRACE("Riga:" + num$(YNOL) - "componente:"+ PA_CMPITM(YNOL) -"errore:"-GMESSAGE, 1) From GESECRAN
+      Break
+    Endif
+    Gosub OK From VXAMT
+    If GERR = 1 Then
+      Call ECR_TRACE("Riga:" + num$(YNOL) - "componente:"+ PA_CMPITM(YNOL) -"errore:"-GMESSAGE, 1) From GESECRAN
+      Break
+    Endif
+  Next
+
+  Raz [M:XAMT]             # per  evitare che aggiunga l'ultima riga
+
+  LORI="PILOT"             #---Per evitare chiusura file traccia
+
+  If GERR = 0 Then
+    Gosub CRE From  VXAMT
+  Endif
+  If GERR <> 0 or GOK=0 Then
+      If GMESSAGE<>""Then
+          WY_MSGERR=GMESSAGE
+      Else
+          WY_MSGERR="Errore creazione avanzamento materiali"        #---Tradurre
+      Endif
+
+  Else
+      WY_MFGTRKNUM=[M:MTMK]MFGTRKNUM
+  Endif
+
+  Gosub FIN From VXAMT
+  GVTMOD=0
+
+  If YMYTRACE = 1  Then
+    Call FERME_TRACE() From LECFIC
+#    Call LEC_TRACE() From LECFIC
+  Endif
+
+End
+
+$INNER_OUVRE
+  If clalev([F:YMFH]) = 0 Then Local File MFGHEAD [F:YMFH] : Endif
+  If clalev([F:YMFM]) = 0 Then Local File MFGMAT [F:YMFM] : Endif
+
+Return
